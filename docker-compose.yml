@@ -6,9 +6,11 @@ services:
     container_name: app-producer
     restart: unless-stopped
     ports:
-      - 80:80
+      - 8080:8080
     environment:
+      ASPNETCORE_HTTP_PORTS: 8080
       Minio__Endpoint: minio:9000
+      Kafka__BootstrapServers: kafka:9094
 
   consumer:
     build:
@@ -18,30 +20,24 @@ services:
     restart: unless-stopped
     environment:
       Minio__Endpoint: minio:9000
+      Kafka__BootstrapServers: kafka:9094
 
   kafka:
-    image: confluentinc/cp-kafka
+    image: bitnami/kafka:latest
     container_name: kafka
-    restart: unless-stopped
     ports:
-      - "9092:9092"
+      - 9094:9094
     environment:
-      # KRaft mode
-      KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_NODE_ID: 1
-
-      # Listeners (ต้องมี controller และ broker)
-      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
-
-      # Broker settings
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      CLUSTER_ID: "v2hAqQxhTZG1dnq1r1DkXA"
-      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      - KAFKA_CFG_NODE_ID=0
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,EXTERNAL://host.docker.internal:9094
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
     volumes:
-      - kafka-data:/var/lib/kafka/data
+      - kafka-data:/bitnami/kafka
 
   minio:
     image: minio/minio

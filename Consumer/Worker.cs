@@ -15,6 +15,7 @@ public class Worker : BackgroundService
 
         var server = configuration.GetValue<string>("Kafka:BootstrapServers");
         var groupId = configuration.GetValue<string>("Kafka:GroupId");
+
         _config = new ConsumerConfig
         {
             BootstrapServers = server,
@@ -22,12 +23,18 @@ public class Worker : BackgroundService
             AutoOffsetReset = AutoOffsetReset.Earliest,
             EnableAutoCommit = false,
         };
+
+        _logger.LogInformation("Worker initialized with server {Server} and group {GroupId}", server, groupId);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _logger.LogInformation("Starting Kafka consumer worker...");
+
         using var consumer = new ConsumerBuilder<Ignore, string>(_config).Build();
+
         consumer.Subscribe(_topic);
+        _logger.LogInformation("Subscribed to topic: {Topic}", _topic);
 
         try
         {
@@ -38,7 +45,7 @@ public class Worker : BackgroundService
                     var result = consumer.Consume(stoppingToken);
 
                     _logger.LogInformation(
-                        "Consumed message at {TopicPartitionOffset}: {Message}",
+                        "Consumed message from {TopicPartitionOffset}: {Message}",
                         result.TopicPartitionOffset,
                         result.Message.Value
                     );
@@ -46,6 +53,7 @@ public class Worker : BackgroundService
                     await ProcessMessageAsync(result.Message.Value, stoppingToken);
 
                     consumer.Commit(result);
+                    _logger.LogInformation("Message committed at {TopicPartitionOffset}", result.TopicPartitionOffset);
                 }
                 catch (ConsumeException ex)
                 {
@@ -53,6 +61,7 @@ public class Worker : BackgroundService
                 }
                 catch (OperationCanceledException)
                 {
+                    _logger.LogWarning("Consumer operation canceled. Stopping worker...");
                     break;
                 }
                 catch (Exception ex)
@@ -63,6 +72,7 @@ public class Worker : BackgroundService
         }
         finally
         {
+            _logger.LogInformation("Closing Kafka consumer...");
             consumer.Close();
         }
     }
