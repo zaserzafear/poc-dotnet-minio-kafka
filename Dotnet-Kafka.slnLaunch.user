@@ -1,0 +1,15 @@
+[
+  {
+    "Name": "Producer+Consumer",
+    "Projects": [
+      {
+        "Path": "Producer\\Producer.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "Consumer\\Consumer.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]

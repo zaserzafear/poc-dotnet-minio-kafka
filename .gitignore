@@ -1,0 +1,5 @@
+﻿**.vs
+**obj
+**bin
+kafka-data
+minio-data
