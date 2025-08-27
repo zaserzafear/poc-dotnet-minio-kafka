@@ -62,11 +62,9 @@ public class Worker : BackgroundService
         _logger.LogInformation("Subscribed to topic: {Topic}", _topic);
 
         var lastResult = (ConsumeResult<Ignore, string>?)null;
+        var lastCommitTime = DateTime.UtcNow;
 
-        // timer สำหรับ commit ทุก 5 วิ
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
-
-        var consumeTask = Task.Run(async () =>
+        try
         {
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -74,11 +72,22 @@ public class Worker : BackgroundService
                 {
                     var result = consumer.Consume(stoppingToken);
 
+                    if (result?.Message is null)
+                        continue;
+
                     await ProcessMessageAsync(result.Message.Value, stoppingToken);
 
-                    // เก็บ offset แต่ยังไม่ commit
+                    // เก็บ offset ไว้
                     consumer.StoreOffset(result);
                     lastResult = result;
+
+                    // ถ้าเกิน 5 วินาทีแล้วตั้งแต่ commit ครั้งก่อน → commit
+                    if ((DateTime.UtcNow - lastCommitTime).TotalSeconds >= 5)
+                    {
+                        consumer.Commit(lastResult);
+                        lastCommitTime = DateTime.UtcNow;
+                        _logger.LogInformation("Committed offsets up to {TopicPartitionOffset}", lastResult.TopicPartitionOffset);
+                    }
                 }
                 catch (ConsumeException ex)
                 {
@@ -94,22 +103,10 @@ public class Worker : BackgroundService
                     _logger.LogError(ex, "Unexpected error while processing message");
                 }
             }
-        }, stoppingToken);
-
-        try
-        {
-            while (await timer.WaitForNextTickAsync(stoppingToken))
-            {
-                if (lastResult is not null)
-                {
-                    consumer.Commit(lastResult);
-                    _logger.LogInformation("Committed offsets up to {TopicPartitionOffset}", lastResult.TopicPartitionOffset);
-                }
-            }
         }
         finally
         {
-            // commit รอบสุดท้ายก่อนปิด
+            // commit รอบสุดท้ายก่อนปิด (ถ้ามี message ที่ยังไม่ commit)
             if (lastResult is not null)
             {
                 consumer.Commit(lastResult);
