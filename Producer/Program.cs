@@ -10,6 +10,11 @@ namespace Producer
         {
             var builder = WebApplication.CreateBuilder(args);
 
+            builder.Logging.AddConsole(configure =>
+            {
+                configure.FormatterName = "datetime";
+            });
+
             // Add services to the container.
 
             builder.Services.AddControllers();
