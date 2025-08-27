@@ -1,4 +1,24 @@
 services:
+  producer:
+    build:
+      context: .
+      dockerfile: Producer/Dockerfile
+    container_name: app-producer
+    restart: unless-stopped
+    ports:
+      - 80:80
+    environment:
+      Minio__Endpoint: minio:9000
+
+  consumer:
+    build:
+      context: .
+      dockerfile: Consumer/Dockerfile
+    container_name: app-consumer
+    restart: unless-stopped
+    environment:
+      Minio__Endpoint: minio:9000
+
   kafka:
     image: confluentinc/cp-kafka
     container_name: kafka
