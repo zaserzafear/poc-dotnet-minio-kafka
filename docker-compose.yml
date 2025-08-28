@@ -1,36 +1,36 @@
 services:
-  producer:
-    build:
-      context: .
-      dockerfile: Producer/Dockerfile
-    container_name: app-producer
-    restart: unless-stopped
-    ports:
-      - 8080:8080
-    environment:
-      ASPNETCORE_HTTP_PORTS: 8080
-      Minio__Endpoint: minio:9000
-      Kafka__BootstrapServers: kafka:9094
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
+  # producer:
+  #   build:
+  #     context: .
+  #     dockerfile: Producer/Dockerfile
+  #   container_name: app-producer
+  #   restart: unless-stopped
+  #   ports:
+  #     - 8080:8080
+  #   environment:
+  #     ASPNETCORE_HTTP_PORTS: 8080
+  #     Minio__Endpoint: minio:9000
+  #     Kafka__BootstrapServers: kafka:9094
+  #   logging:
+  #     driver: json-file
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "5"
 
-  consumer:
-    build:
-      context: .
-      dockerfile: Consumer/Dockerfile
-    container_name: app-consumer
-    restart: unless-stopped
-    environment:
-      Minio__Endpoint: minio:9000
-      Kafka__BootstrapServers: kafka:9094
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
+  # consumer:
+  #   build:
+  #     context: .
+  #     dockerfile: Consumer/Dockerfile
+  #   container_name: app-consumer
+  #   restart: unless-stopped
+  #   environment:
+  #     Minio__Endpoint: minio:9000
+  #     Kafka__BootstrapServers: kafka:9094
+  #   logging:
+  #     driver: json-file
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "5"
 
   kafka:
     image: bitnami/kafka:latest

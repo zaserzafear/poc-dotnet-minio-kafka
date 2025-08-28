@@ -1,4 +1,7 @@
 ﻿using Confluent.Kafka;
+using Consumer.Services;
+using Contracts.Dtos;
+using System.Text.Json;
 
 namespace Consumer;
 
@@ -7,8 +10,11 @@ public class Worker : BackgroundService
     private readonly ILogger<Worker> _logger;
     private readonly ConsumerConfig _config;
     private readonly string _topic;
+    private readonly MinioCleanupService _minioCleanupService;
 
-    public Worker(ILogger<Worker> logger, IConfiguration configuration)
+    public Worker(ILogger<Worker> logger,
+        IConfiguration configuration,
+        MinioCleanupService minioCleanupService)
     {
         _logger = logger;
         _topic = configuration.GetValue<string>("Kafka:Topic")!;
@@ -51,6 +57,7 @@ public class Worker : BackgroundService
         };
 
         _logger.LogInformation("Worker initialized with server {Server} and group {GroupId}", server, groupId);
+        _minioCleanupService = minioCleanupService;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -64,29 +71,33 @@ public class Worker : BackgroundService
         var lastResult = (ConsumeResult<Ignore, string>?)null;
         var lastCommitTime = DateTime.UtcNow;
 
+        // buffer เก็บ path ไว้สำหรับ batch delete
+        var buffer = new List<MessageDto>();
+
         try
         {
             while (!stoppingToken.IsCancellationRequested)
             {
                 try
                 {
-                    var result = consumer.Consume(stoppingToken);
+                    var result = consumer.Consume(TimeSpan.FromMilliseconds(1000));
 
-                    if (result?.Message is null)
-                        continue;
-
-                    await ProcessMessageAsync(result.Message.Value, stoppingToken);
-
-                    // เก็บ offset ไว้
-                    consumer.StoreOffset(result);
-                    lastResult = result;
-
-                    // ถ้าเกิน 5 วินาทีแล้วตั้งแต่ commit ครั้งก่อน → commit
-                    if ((DateTime.UtcNow - lastCommitTime).TotalSeconds >= 5)
+                    if (result?.Message != null)
                     {
-                        consumer.Commit(lastResult);
+                        var data = JsonSerializer.Deserialize<MessageDto>(result.Message.Value);
+                        if (data != null)
+                        {
+                            buffer.Add(data);
+                            consumer.StoreOffset(result);
+                            lastResult = result;
+                        }
+                    }
+
+                    // เงื่อนไข batch delete: เมื่อ buffer > 1000 ไฟล์ หรือ ผ่านไป 5 วินาที
+                    if (buffer.Count > 0 && (buffer.Count >= 1000 || (DateTime.UtcNow - lastCommitTime).TotalSeconds >= 5))
+                    {
+                        await FlushBatchAsync(buffer, consumer, lastResult!, stoppingToken);
                         lastCommitTime = DateTime.UtcNow;
-                        _logger.LogInformation("Committed offsets up to {TopicPartitionOffset}", lastResult.TopicPartitionOffset);
                     }
                 }
                 catch (ConsumeException ex)
@@ -106,11 +117,10 @@ public class Worker : BackgroundService
         }
         finally
         {
-            // commit รอบสุดท้ายก่อนปิด (ถ้ามี message ที่ยังไม่ commit)
-            if (lastResult is not null)
+            // flush รอบสุดท้าย
+            if (buffer.Count > 0 && lastResult is not null)
             {
-                consumer.Commit(lastResult);
-                _logger.LogInformation("Final commit at shutdown: {TopicPartitionOffset}", lastResult.TopicPartitionOffset);
+                await FlushBatchAsync(buffer, consumer, lastResult, stoppingToken);
             }
 
             _logger.LogInformation("Closing Kafka consumer...");
@@ -118,9 +128,26 @@ public class Worker : BackgroundService
         }
     }
 
-    private Task ProcessMessageAsync(string message, CancellationToken token)
+    private async Task FlushBatchAsync(
+        List<MessageDto> buffer,
+        IConsumer<Ignore, string> consumer,
+        ConsumeResult<Ignore, string> lastResult,
+        CancellationToken token)
     {
-        _logger.LogInformation("Processing message: {Message}", message);
-        return Task.CompletedTask;
+        try
+        {
+            _logger.LogInformation("Batch deleting {Count} files", buffer.Count);
+
+            await _minioCleanupService.DeleteFilesAsync(buffer, token);
+
+            consumer.Commit(lastResult);
+            _logger.LogInformation("Committed offsets after batch delete up to {Offset}", lastResult.TopicPartitionOffset);
+
+            buffer.Clear();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during batch delete from Minio");
+        }
     }
 }
