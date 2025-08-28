@@ -4,11 +4,13 @@
     "Projects": [
       {
         "Path": "Producer\\Producer.csproj",
-        "Action": "Start"
+        "Action": "Start",
+        "DebugTarget": "http"
       },
       {
         "Path": "Consumer\\Consumer.csproj",
-        "Action": "Start"
+        "Action": "Start",
+        "DebugTarget": "Consumer"
       }
     ]
   }
