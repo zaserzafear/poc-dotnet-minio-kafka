@@ -1,4 +1,7 @@
 ﻿using Confluent.Kafka;
+using Consumer.Services;
+using Contracts.Dtos;
+using System.Text.Json;
 
 namespace Consumer;
 
@@ -7,8 +10,11 @@ public class Worker : BackgroundService
     private readonly ILogger<Worker> _logger;
     private readonly ConsumerConfig _config;
     private readonly string _topic;
+    private readonly MinioCleanupService _minioCleanupService;
 
-    public Worker(ILogger<Worker> logger, IConfiguration configuration)
+    public Worker(ILogger<Worker> logger,
+        IConfiguration configuration,
+        MinioCleanupService minioCleanupService)
     {
         _logger = logger;
         _topic = configuration.GetValue<string>("Kafka:Topic")!;
@@ -51,6 +57,7 @@ public class Worker : BackgroundService
         };
 
         _logger.LogInformation("Worker initialized with server {Server} and group {GroupId}", server, groupId);
+        _minioCleanupService = minioCleanupService;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -121,6 +128,18 @@ public class Worker : BackgroundService
     private Task ProcessMessageAsync(string message, CancellationToken token)
     {
         _logger.LogInformation("Processing message: {Message}", message);
+
+        var data = JsonSerializer.Deserialize<MessageDto>(message);
+
+        if (data is null)
+        {
+            _logger.LogWarning("Received null or invalid message data");
+            return Task.CompletedTask;
+        }
+
+        _logger.LogInformation("Deleting file from Minio - Bucket: {Bucket}, Path: {Path}", data.Bucket, data.Path);
+        _minioCleanupService.DeleteFileAsync(data.Bucket, data.Path, token).GetAwaiter().GetResult();
+        _logger.LogInformation("File deleted successfully from Minio - Bucket: {Bucket}, Path: {Path}", data.Bucket, data.Path);
         return Task.CompletedTask;
     }
 }
