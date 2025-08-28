@@ -38,6 +38,7 @@ services:
     ports:
       - 9094:9094
     environment:
+      - KAFKA_CLUSTER_ID=pMvr7h8TS42F4O07CxFFNw
       - KAFKA_CFG_NODE_ID=0
       - KAFKA_CFG_PROCESS_ROLES=controller,broker
       - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
